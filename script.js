@@ -1,10 +1,14 @@
 const axios = require('axios').default;
 const fs = require('fs').promises;
 const colors = require('colors');
-const ora = require('ora');
 const { SocksProxyAgent } = require('socks-proxy-agent');
 const { randomInt } = require('crypto');
 const readline = require('readline');
+
+// Basit spinner yerine konsol mesajı
+function logStatus(message, color) {
+    console.log(message[color || 'white']);
+}
 
 // Kullanıcı ajanları
 const userAgents = [
@@ -27,13 +31,13 @@ const rl = readline.createInterface({
 
 // Proxy yükleyici
 async function loadProxies() {
-    const spinner = ora('Proxy’ler yükleniyor...').start();
+    logStatus('Proxy’ler yükleniyor...', 'cyan');
     try {
         const data = await fs.readFile('proxies.txt', 'utf8');
         proxies = data.split('\n').filter(line => line.trim());
-        spinner.succeed(proxies.length + ' proxy yüklendi!'.green);
+        logStatus(proxies.length + ' proxy yüklendi!', 'green');
     } catch {
-        spinner.warn('Proxy dosyası yok, direkt bağlanılıyor.'.yellow);
+        logStatus('Proxy dosyası yok, direkt bağlanılıyor.', 'yellow');
     }
 }
 
@@ -185,7 +189,7 @@ async function megaBypassAttack(input) {
     console.log('⚙️ Thread: ' + threads.cyan);
     console.log('🔥 Method: ' + method.cyan);
 
-    var spinner = ora('Hazırlanıyor...').start();
+    logStatus('Hazırlanıyor...', 'cyan');
     var endTime = Date.now() + duration * 1000;
     var successCount = 0;
     var failCount = 0;
@@ -209,7 +213,7 @@ async function megaBypassAttack(input) {
     }
 
     var workers = Array(threads).fill().map(function() { return worker(); });
-    spinner.succeed('Saldırı aktif!'.green);
+    logStatus('Saldırı aktif!', 'green');
     await Promise.all(workers);
 
     console.log('\n🎉 ' + 'BİTTİ!'.rainbow.bold + ' 🎉');
@@ -218,13 +222,12 @@ async function megaBypassAttack(input) {
 }
 
 // Çalıştır
-(async function() {
-    try {
-        var input = await getUserInput();
-        await megaBypassAttack(input);
-    } catch (err) {
+(function() {
+    getUserInput().then(function(input) {
+        return megaBypassAttack(input);
+    }).catch(function(err) {
         console.error('Hata: ' + err.message.red);
-    } finally {
+    }).finally(function() {
         rl.close();
-    }
+    });
 })();
