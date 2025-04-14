@@ -179,4 +179,7 @@ async function megaBypassAttack({ method, url, duration, threads }) {
 
     const workers = Array.from({ length: threads }, () => worker());
     logStatus('Saldırı aktif!', 'green');
-    await Promise.all(workers
+    await Promise.all(workers.map(async (worker) => {
+  await doSomething(worker);
+}));
+
